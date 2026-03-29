@@ -347,7 +347,7 @@ Summary: The Linux kernel
 
 %ifarch aarch64
 # dtbloader sub-package requires stubble which is only in Fedora for now
-%if 0%{?fedora}
+%if 0%{?fedora} >= 43
 %define with_dtbloader %{?_without_dtbloader: 0} %{?!_without_dtbloader: 1}
 %else
 %define with_dtbloader 0
