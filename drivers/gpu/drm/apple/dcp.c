@@ -516,6 +516,16 @@ static void dcp_hdmi_retry_work_fn(struct work_struct *work)
 		dev_warn(dcp->dev,
 			 "HDMI reconnect: power cycling dp2hdmi converter\n");
 
+		/*
+		 * The converter's power rails also feed its HPD line, so
+		 * bringing them back up raises an HPD IRQ that we caused
+		 * ourselves rather than a user replug. Tell dcp_dp2hdmi_hpd()
+		 * to leave the retry budget alone until we are done with it,
+		 * otherwise the counter is reset on every third attempt and
+		 * the retry loop never reaches DCP_HDMI_RETRY_MAX.
+		 */
+		WRITE_ONCE(dcp->hdmi_retry_power_cycling, true);
+
 		if (dcp->dp2hdmi_pwren)
 			gpiod_set_value_cansleep(dcp->dp2hdmi_pwren, 0);
 		if (dcp->hdmi_pwren)
@@ -535,6 +545,8 @@ static void dcp_hdmi_retry_work_fn(struct work_struct *work)
 
 	if (connected)
 		dcp_dptx_connect(dcp, 0);
+
+	WRITE_ONCE(dcp->hdmi_retry_power_cycling, false);
 
 	if (dcp->hdmi_retry_count < DCP_HDMI_RETRY_MAX)
 		schedule_delayed_work(&dcp->hdmi_retry_work,
@@ -581,6 +593,20 @@ static irqreturn_t dcp_dp2hdmi_hpd(int irq, void *data)
 		msleep(500);
 		connected = gpiod_get_value_cansleep(dcp->hdmi_hpd);
 		dev_info(dcp->dev, "DP2HDMI HPD irq, 500ms debounce: connected:%d\n", connected);
+	}
+
+	/*
+	 * An HPD raised by our own converter power cycle is not a user replug:
+	 * dcp_hdmi_retry_work_fn() is still running, owns the retry budget and
+	 * reconnects by itself. Resetting the counter here would hand it a
+	 * fresh budget on every third attempt so it could never give up, and
+	 * cancel_delayed_work_sync() would stall this IRQ thread waiting for
+	 * the very work item that caused the interrupt.
+	 */
+	if (connected && READ_ONCE(dcp->hdmi_retry_power_cycling)) {
+		dev_info(dcp->dev,
+			 "DP2HDMI HPD irq from driver power cycle, ignoring\n");
+		return IRQ_HANDLED;
 	}
 
 	if (connected) {
@@ -1211,6 +1237,8 @@ static void dcp_comp_unbind(struct device *dev, struct device *main, void *data)
 		disable_irq(dcp->hdmi_hpd_irq);
 
 	cancel_delayed_work_sync(&dcp->hdmi_retry_work);
+	dcp->hdmi_retry_count = 0;
+	WRITE_ONCE(dcp->hdmi_retry_power_cycling, false);
 
 	typec_mux_put(dcp->typec_mux);
 
