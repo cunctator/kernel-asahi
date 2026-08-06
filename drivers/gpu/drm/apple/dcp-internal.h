@@ -273,6 +273,7 @@ struct apple_dcp {
 	 */
 	struct delayed_work hdmi_retry_work;
 	unsigned int hdmi_retry_count;
+	bool hdmi_retry_power_cycling;
 };
 
 void dcp_drm_crtc_page_flip(struct apple_dcp *dcp, ktime_t now);
