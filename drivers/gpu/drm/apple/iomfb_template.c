@@ -575,8 +575,12 @@ static bool dcpep_process_chunks(struct apple_dcp *dcp,
 			dcp->nr_modes = 0;
 			return false;
 		}
-		if (dcp->nr_modes == 0)
+		if (dcp->nr_modes == 0) {
 			dev_warn(dcp->dev, "TimingElements without valid modes!\n");
+			dcp_hdmi_empty_modes_retry(dcp);
+		} else {
+			dcp_hdmi_retry_cancel(dcp);
+		}
 	} else if (!strcmp(req->key, "DisplayAttributes")) {
 		ret = parse_display_attributes(&ctx, &dcp->width_mm,
 					&dcp->height_mm);
@@ -1036,6 +1040,8 @@ static void dcpep_cb_hotplug(struct apple_dcp *dcp, u64 *connected)
 		/* after unplug swap will not complete until the next
 		 * set_digital_out_mode */
 		schedule_work(&dcp->vblank_wq);
+		/* a real disconnect makes any pending empty-modes retry stale */
+		dcp_hdmi_retry_cancel(dcp);
 	}
 
 	if (connector && connector->connected != !!(*connected)) {
