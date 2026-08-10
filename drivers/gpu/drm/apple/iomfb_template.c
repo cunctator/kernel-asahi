@@ -37,6 +37,11 @@
 struct dcp_wait_cookie {
 	struct kref refcount;
 	struct completion done;
+	/*
+	 * DCP-returned status of the completed call, valid after done fires.
+	 * Only populated by callers that care; 0 for the rest.
+	 */
+	u32 retcode;
 };
 
 static void release_wait_cookie(struct kref *ref)
@@ -1191,6 +1196,12 @@ static void complete_set_digital_out_mode(struct apple_dcp *dcp, void *data,
 	struct dcp_wait_cookie *wait = cookie;
 
 	if (wait) {
+		/*
+		 * DCP's status for the call; see the retcode check in
+		 * iomfb_modeset(). Written before complete() so the waiter
+		 * is guaranteed to observe it once woken.
+		 */
+		wait->retcode = *(u32 *)data;
 		complete(&wait->done);
 		kref_put(&wait->refcount, release_wait_cookie);
 	}
@@ -1202,6 +1213,7 @@ int DCP_FW_NAME(iomfb_modeset)(struct apple_dcp *dcp,
 	struct dcp_display_mode *mode;
 	struct dcp_wait_cookie *cookie;
 	struct dcp_color_mode *cmode = NULL;
+	u32 retcode;
 	int ret;
 
 	mode = lookup_mode(dcp, &crtc_state->mode);
@@ -1261,23 +1273,38 @@ int DCP_FW_NAME(iomfb_modeset)(struct apple_dcp *dcp,
 	ret = wait_for_completion_timeout(&cookie->done,
 					  msecs_to_jiffies(8500));
 
-	kref_put(&cookie->refcount, release_wait_cookie);
 	dcp->during_modeset = false;
 	dev_info(dcp->dev, "set_digital_out_mode finished:%d\n", ret);
 
 	if (ret == 0) {
 		dev_info(dcp->dev, "set_digital_out_mode timed out\n");
+		kref_put(&cookie->refcount, release_wait_cookie);
 		return -EIO;
 	} else if (ret < 0) {
 		dev_info(dcp->dev,
 			 "waiting on set_digital_out_mode failed:%d\n", ret);
+		kref_put(&cookie->refcount, release_wait_cookie);
 		return -EIO;
-
-	} else if (ret > 0) {
-		dev_dbg(dcp->dev,
-			"set_digital_out_mode finished with %d to spare\n",
-			jiffies_to_msecs(ret));
 	}
+
+	dev_dbg(dcp->dev, "set_digital_out_mode finished with %d to spare\n",
+		jiffies_to_msecs(ret));
+
+	/*
+	 * Completion already fired (ret > 0), so the callback's write to
+	 * retcode already happened-before we were woken; safe to read here
+	 * without racing it.
+	 */
+	retcode = cookie->retcode;
+	kref_put(&cookie->refcount, release_wait_cookie);
+
+	if (retcode) {
+		dev_err(dcp->dev,
+			"set_digital_out_mode failed, DCP returned:%#x\n",
+			retcode);
+		return -EIO;
+	}
+
 	dcp->valid_mode = true;
 
 	return 0;
