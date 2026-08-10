@@ -467,6 +467,115 @@ int dcp_dptx_disconnect_oob(struct platform_device *pdev, u32 port)
 	return dcp_dptx_disconnect(dcp, port);
 }
 
+/*
+ * Recovery for DCP reporting an empty TimingElements/ColorElements list
+ * after an HDMI replug or display input switch.
+ *
+ * The DP2HDMI converter's HPD GPIO can go high before DCP is actually able
+ * to read the downstream sink's capabilities through the bridge (whether
+ * because the monitor itself isn't ready yet, or the bridge chip's own
+ * internal re-detection hasn't settled). When that happens DCP hands back a
+ * syntactically valid but empty mode list and never retries on its own; the
+ * link is left connected but with no usable mode, so no mode set is ever
+ * possible until the whole DCP stack is reloaded (reboot).
+ *
+ * Work around it by re-running the DPTX connect handshake a few times with
+ * a delay in between, giving the sink/bridge time to settle. If plain
+ * retries don't help, escalate once to a hard power-cycle of the DP2HDMI
+ * converter's power-enable GPIOs before continuing to retry.
+ */
+#define DCP_HDMI_RETRY_MAX 5
+#define DCP_HDMI_RETRY_POWER_CYCLE_AT 3
+#define DCP_HDMI_RETRY_DELAY msecs_to_jiffies(2000)
+
+static void dcp_hdmi_retry_work_fn(struct work_struct *work)
+{
+	struct apple_dcp *dcp = container_of(to_delayed_work(work),
+					     struct apple_dcp, hdmi_retry_work);
+	bool connected;
+
+	if (dcp->crashed || !dcp->hdmi_hpd)
+		return;
+
+	/* Recovered already (e.g. a fresh replug raced us) or unplugged again. */
+	if (dcp->nr_modes > 0)
+		return;
+
+	connected = gpiod_get_value_cansleep(dcp->hdmi_hpd);
+	if (!connected)
+		return;
+
+	dcp->hdmi_retry_count++;
+	dev_warn(dcp->dev,
+		 "HDMI reconnect: empty mode list, retry %u/%u\n",
+		 dcp->hdmi_retry_count, DCP_HDMI_RETRY_MAX);
+
+	dcp_dptx_disconnect(dcp, 0);
+
+	if (dcp->hdmi_retry_count == DCP_HDMI_RETRY_POWER_CYCLE_AT) {
+		dev_warn(dcp->dev,
+			 "HDMI reconnect: power cycling dp2hdmi converter\n");
+
+		/*
+		 * The converter's power rails also feed its HPD line, so
+		 * bringing them back up raises an HPD IRQ that we caused
+		 * ourselves rather than a user replug. Tell dcp_dp2hdmi_hpd()
+		 * to leave the retry budget alone until we are done with it,
+		 * otherwise the counter is reset on every third attempt and
+		 * the retry loop never reaches DCP_HDMI_RETRY_MAX.
+		 */
+		WRITE_ONCE(dcp->hdmi_retry_power_cycling, true);
+
+		if (dcp->dp2hdmi_pwren)
+			gpiod_set_value_cansleep(dcp->dp2hdmi_pwren, 0);
+		if (dcp->hdmi_pwren)
+			gpiod_set_value_cansleep(dcp->hdmi_pwren, 0);
+
+		msleep(500);
+
+		if (dcp->hdmi_pwren)
+			gpiod_set_value_cansleep(dcp->hdmi_pwren, 1);
+		if (dcp->dp2hdmi_pwren)
+			gpiod_set_value_cansleep(dcp->dp2hdmi_pwren, 1);
+
+		msleep(1000);
+
+		connected = gpiod_get_value_cansleep(dcp->hdmi_hpd);
+	}
+
+	if (connected)
+		dcp_dptx_connect(dcp, 0);
+
+	WRITE_ONCE(dcp->hdmi_retry_power_cycling, false);
+
+	if (dcp->hdmi_retry_count < DCP_HDMI_RETRY_MAX)
+		schedule_delayed_work(&dcp->hdmi_retry_work,
+				      DCP_HDMI_RETRY_DELAY);
+	else
+		dev_err(dcp->dev,
+			"HDMI reconnect: giving up after %u retries, no valid modes\n",
+			DCP_HDMI_RETRY_MAX);
+}
+
+/* Called from the TimingElements parser when the mode list comes back empty. */
+void dcp_hdmi_empty_modes_retry(struct apple_dcp *dcp)
+{
+	if (dcp->connector_type != DRM_MODE_CONNECTOR_HDMIA || !dcp->hdmi_hpd)
+		return;
+
+	if (dcp->hdmi_retry_count >= DCP_HDMI_RETRY_MAX)
+		return;
+
+	schedule_delayed_work(&dcp->hdmi_retry_work, DCP_HDMI_RETRY_DELAY);
+}
+
+/* Called when a valid mode list arrives, or a real disconnect is reported. */
+void dcp_hdmi_retry_cancel(struct apple_dcp *dcp)
+{
+	cancel_delayed_work(&dcp->hdmi_retry_work);
+	dcp->hdmi_retry_count = 0;
+}
+
 static irqreturn_t dcp_dp2hdmi_hpd(int irq, void *data)
 {
 	struct apple_dcp *dcp = data;
@@ -486,8 +595,26 @@ static irqreturn_t dcp_dp2hdmi_hpd(int irq, void *data)
 		dev_info(dcp->dev, "DP2HDMI HPD irq, 500ms debounce: connected:%d\n", connected);
 	}
 
-	if (connected)
+	/*
+	 * An HPD raised by our own converter power cycle is not a user replug:
+	 * dcp_hdmi_retry_work_fn() is still running, owns the retry budget and
+	 * reconnects by itself. Resetting the counter here would hand it a
+	 * fresh budget on every third attempt so it could never give up, and
+	 * cancel_delayed_work_sync() would stall this IRQ thread waiting for
+	 * the very work item that caused the interrupt.
+	 */
+	if (connected && READ_ONCE(dcp->hdmi_retry_power_cycling)) {
+		dev_info(dcp->dev,
+			 "DP2HDMI HPD irq from driver power cycle, ignoring\n");
+		return IRQ_HANDLED;
+	}
+
+	if (connected) {
+		/* Fresh physical replug: give it its own full retry budget. */
+		cancel_delayed_work_sync(&dcp->hdmi_retry_work);
+		dcp->hdmi_retry_count = 0;
 		dcp_dptx_connect(dcp, 0);
+	}
 
 	return IRQ_HANDLED;
 }
@@ -1005,6 +1132,7 @@ static int dcp_comp_bind(struct device *dev, struct device *main, void *data)
 		dev_info(dev, "DCP index:%u dptx target phy: %u dptx die: %u\n",
 			 dcp->index, dcp->dptx_phy, dcp->dptx_die);
 	mutex_init(&dcp->hpd_mutex);
+	INIT_DELAYED_WORK(&dcp->hdmi_retry_work, dcp_hdmi_retry_work_fn);
 
 	if (!show_notch)
 		ret = of_property_read_u32(dev->of_node, "apple,notch-height",
@@ -1107,6 +1235,10 @@ static void dcp_comp_unbind(struct device *dev, struct device *main, void *data)
 
 	if (dcp->hdmi_hpd_irq)
 		disable_irq(dcp->hdmi_hpd_irq);
+
+	cancel_delayed_work_sync(&dcp->hdmi_retry_work);
+	dcp->hdmi_retry_count = 0;
+	WRITE_ONCE(dcp->hdmi_retry_power_cycling, false);
 
 	typec_mux_put(dcp->typec_mux);
 

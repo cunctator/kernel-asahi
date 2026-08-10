@@ -13,6 +13,7 @@
 #include <linux/platform_device.h>
 #include <linux/scatterlist.h>
 #include <linux/usb/typec_mux.h>
+#include <linux/workqueue.h>
 
 #include "dptxep.h"
 #include "iomfb.h"
@@ -264,6 +265,15 @@ struct apple_dcp {
 	u32 dptx_phy;
 	u32 dptx_die;
 	int hdmi_hpd_irq;
+
+	/*
+	 * Retry state for recovering from DCP reporting an empty
+	 * TimingElements/ColorElements mode list after an HDMI replug or
+	 * display input switch. See dcp_hdmi_empty_modes_retry().
+	 */
+	struct delayed_work hdmi_retry_work;
+	unsigned int hdmi_retry_count;
+	bool hdmi_retry_power_cycling;
 };
 
 void dcp_drm_crtc_page_flip(struct apple_dcp *dcp, ktime_t now);
