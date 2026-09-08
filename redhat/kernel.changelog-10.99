@@ -1,3 +1,13 @@
+* Tue Sep 08 2026 Neal Gompa <neal@gompa.dev> [7.1.13-402.asahi]
+- fixup! arm64: dts: apple: t[603x,8122]: Add speaker/jack nodes (James Calligeros)
+- fixup! media: apple: avd: support vp9 (sofus)
+- media: apple: avd: add a dedicated "submit" step (sofus)
+- fixup! media: apple: avd: define static values and bitmasks (sofus)
+- media: apple: avd: rename buffers (sofus)
+- fixup! media: apple: avd: add av1 support (sofus)
+- media: apple: avd: check that buffer size is positive (sofus)
+Resolves: 
+
 * Fri Sep 04 2026 Neal Gompa <neal@gompa.dev> [7.1.13-401.asahi]
 - dracut-virt.conf: change systemd-pcrphase to systemd-pcrextend (Vitaly Kuznetsov)
 Resolves: 
