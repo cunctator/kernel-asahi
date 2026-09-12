@@ -1,3 +1,8 @@
+* Sat Sep 12 2026 Neal Gompa <neal@gompa.dev> [7.1.13-403.asahi]
+- wifi: brcmfmac: cfg80211: Report port_authorized for 4-way HS offload (Janne Grunau)
+- fixup! arm64: dts: apple: t[603x,8122]: Add speaker/jack nodes (sofus)
+Resolves: 
+
 * Tue Sep 08 2026 Neal Gompa <neal@gompa.dev> [7.1.13-402.asahi]
 - fixup! arm64: dts: apple: t[603x,8122]: Add speaker/jack nodes (James Calligeros)
 - fixup! media: apple: avd: support vp9 (sofus)
