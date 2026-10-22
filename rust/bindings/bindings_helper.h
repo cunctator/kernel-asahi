@@ -37,6 +37,8 @@
 #include <drm/drm_gem_shmem_helper.h>
 #include <drm/drm_gpuvm.h>
 #include <drm/drm_ioctl.h>
+#include <drm/drm_syncobj.h>
+#include <drm/gpu_scheduler.h>
 #include <kunit/test.h>
 #include <linux/auxiliary_bus.h>
 #include <linux/bitmap.h>
@@ -53,6 +55,8 @@
 #include <linux/debugfs.h>
 #include <linux/device/faux.h>
 #include <linux/dma-direction.h>
+#include <linux/dma-fence.h>
+#include <linux/dma-fence-chain.h>
 #include <linux/dma-mapping.h>
 #include <linux/dma-resv.h>
 #include <linux/errname.h>
@@ -62,8 +66,11 @@
 #include <linux/firmware.h>
 #include <linux/fs.h>
 #include <linux/i2c.h>
+#include <linux/iio/iio.h>
+#include <linux/iio/types.h>
 #include <linux/interrupt.h>
 #include <linux/io-pgtable.h>
+#include <linux/iommu.h>
 #include <linux/ioport.h>
 #include <linux/iosys-map.h>
 #include <linux/jiffies.h>
@@ -71,7 +78,10 @@
 #include <linux/mdio.h>
 #include <linux/mm.h>
 #include <linux/miscdevice.h>
+#include <linux/of.h>
+#include <linux/of_address.h>
 #include <linux/of_device.h>
+#include <linux/of_reserved_mem.h>
 #include <linux/pci.h>
 #include <linux/phy.h>
 #include <linux/pid_namespace.h>
@@ -86,6 +96,8 @@
 #include <linux/sched.h>
 #include <linux/security.h>
 #include <linux/slab.h>
+#include <linux/soc/apple/mailbox.h>
+#include <linux/soc/apple/rtkit.h>
 #include <linux/sys_soc.h>
 #include <linux/task_work.h>
 #include <linux/tracepoint.h>
@@ -93,6 +105,9 @@
 #include <linux/wait.h>
 #include <linux/workqueue.h>
 #include <linux/xarray.h>
+#include <sound/core.h>
+#include <sound/dmaengine_pcm.h>
+#include <sound/pcm.h>
 #include <trace/events/rust_sample.h>
 
 /*
@@ -119,6 +134,13 @@ const gfp_t RUST_CONST_HELPER___GFP_HIGHMEM = ___GFP_HIGHMEM;
 const gfp_t RUST_CONST_HELPER___GFP_NOWARN = ___GFP_NOWARN;
 const blk_features_t RUST_CONST_HELPER_BLK_FEAT_ROTATIONAL = BLK_FEAT_ROTATIONAL;
 const fop_flags_t RUST_CONST_HELPER_FOP_UNSIGNED_OFFSET = FOP_UNSIGNED_OFFSET;
+
+const u64 BINDINGS_SNDRV_PCM_FMTBIT_FLOAT_LE = SNDRV_PCM_FMTBIT_FLOAT_LE;
+
+const u32 BINDINGS_IIO_CHAN_INFO_RAW = IIO_CHAN_INFO_RAW;
+const u32 BINDINGS_IIO_CHAN_INFO_PROCESSED = IIO_CHAN_INFO_PROCESSED;
+const u32 BINDINGS_IIO_ANGL = IIO_ANGL;
+const u32 BINDINGS_IIO_LIGHT = IIO_LIGHT;
 
 const xa_mark_t RUST_CONST_HELPER_XA_PRESENT = XA_PRESENT;
 
@@ -150,6 +172,8 @@ const vm_flags_t RUST_CONST_HELPER_VM_SOFTDIRTY = VM_SOFTDIRTY;
 const vm_flags_t RUST_CONST_HELPER_VM_MIXEDMAP = VM_MIXEDMAP;
 const vm_flags_t RUST_CONST_HELPER_VM_HUGEPAGE = VM_HUGEPAGE;
 const vm_flags_t RUST_CONST_HELPER_VM_NOHUGEPAGE = VM_NOHUGEPAGE;
+
+const u32 RUST_CONST_HELPER_DRM_EXEC_INTERRUPTIBLE_WAIT = DRM_EXEC_INTERRUPTIBLE_WAIT;
 
 #if IS_ENABLED(CONFIG_GPU_BUDDY)
 const unsigned long RUST_CONST_HELPER_GPU_BUDDY_RANGE_ALLOCATION = GPU_BUDDY_RANGE_ALLOCATION;
