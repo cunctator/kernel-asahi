@@ -1,3 +1,9 @@
+* Sun Oct 25 2026 Janne Grunau <j@jannau.net> [7.2.12-401.asahi]
+- net: atlantic: AQC113: Zero struct hw_atl2_priv in hw_atl2_hw_reset() (Janne Grunau)
+- fixup! arm64: dts: apple: t8103: Add dcpext/dispext0 nodes (Janne Grunau)
+- amend! arm64: configs: asahi: Add new configs for v7.1/v7.2 (Janne Grunau)
+Resolves: 
+
 * Thu Oct 22 2026 Neal Gompa <neal@gompa.dev> [7.2.12-400.asahi]
 - redhat/configs: aarch64: Enable Apple USB4 drivers (Neal Gompa)
 - redhat/configs: Disable DRM Panic frontend URL (Neal Gompa)
