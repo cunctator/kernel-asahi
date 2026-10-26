@@ -1,3 +1,10 @@
+* Mon Oct 26 2026 Janne Grunau <j@jannau.net> [7.2.12-402.asahi]
+- fixup! WIP: drm: apple: Add 14.7 FW ABI (Janne Grunau)
+- net: atlantic: AQC113: Limit multicast filters to avaiable slots (Janne Grunau)
+- net: atlantic: AQC113: Fix hw_packet_filter_set for l2 filter base index > 0 (Janne Grunau)
+- Revert "net: atlantic: AQC113: Zero struct hw_atl2_priv in hw_atl2_hw_reset()" (Janne Grunau)
+Resolves: 
+
 * Sun Oct 25 2026 Janne Grunau <j@jannau.net> [7.2.12-401.asahi]
 - net: atlantic: AQC113: Zero struct hw_atl2_priv in hw_atl2_hw_reset() (Janne Grunau)
 - fixup! arm64: dts: apple: t8103: Add dcpext/dispext0 nodes (Janne Grunau)
