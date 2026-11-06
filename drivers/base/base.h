@@ -227,6 +227,14 @@ struct devres_node {
 	dr_node_free_t			free_node;
 	const char			*name;
 	size_t				size;
+	/*
+	 * Set under devres_lock when remove_nodes() takes a regular node off
+	 * the device's list in order to release it, and never cleared. The
+	 * entry of such a node stays non-empty, so list_empty() cannot tell
+	 * that it has left the list. Group markers are not marked, because
+	 * they are never passed to devres_node_remove().
+	 */
+	bool				releasing;
 };
 
 void devres_node_init(struct devres_node *node, dr_node_release_t release,
