@@ -14,6 +14,18 @@ config DM_KUNIT_TEST
 	depends on KUNIT
 	default KUNIT_ALL_TESTS
 
+config DEVRES_NODE_KUNIT_TEST
+	bool "KUnit Tests for devres_node_remove()" if !KUNIT_ALL_TESTS
+	depends on KUNIT=y
+	default KUNIT_ALL_TESTS
+	help
+	  This builds the KUnit tests for devres_node_remove(), which check
+	  the return value of that function for nodes in each state, including
+	  nodes that devres is in the process of releasing. They can only be
+	  built in, because the functions they test are not exported.
+
+	  If unsure, say N.
+
 config DRIVER_PE_KUNIT_TEST
 	tristate "KUnit Tests for property entry API" if !KUNIT_ALL_TESTS
 	depends on KUNIT
