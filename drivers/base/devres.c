@@ -43,6 +43,7 @@ void devres_node_init(struct devres_node *node,
 	INIT_LIST_HEAD(&node->entry);
 	node->release = release;
 	node->free_node = free_node;
+	node->releasing = false;
 }
 
 static inline void free_node(struct devres_node *node)
@@ -365,20 +366,37 @@ void *devres_get(struct device *dev, void *new_res,
 }
 EXPORT_SYMBOL_GPL(devres_get);
 
+/**
+ * devres_node_remove - Remove a node from its device's list
+ * @dev: Device that @node was added to
+ * @node: Node to remove
+ *
+ * Remove @node from the list of @dev, unless the node has already been taken
+ * off the list. The caller must guarantee that @node stays valid for the
+ * duration of this call, even if devres_release_all() or
+ * devres_release_group() is running concurrently, and that, if the node has
+ * been added to a device, that device is @dev.
+ *
+ * RETURNS:
+ * True if @node was removed from the list of @dev by this call, false if the
+ * node is not on the list. In the latter case, the node may be on its way to
+ * being released.
+ */
 bool devres_node_remove(struct device *dev, struct devres_node *node)
 {
-	struct devres_node *__node;
-
 	guard(spinlock_irqsave)(&dev->devres_lock);
-	list_for_each_entry_reverse(__node, &dev->devres_head, entry) {
-		if (__node == node) {
-			list_del_init(&node->entry);
-			devres_log(dev, node, "REM");
-			return true;
-		}
-	}
 
-	return false;
+	/*
+	 * Checking the entry is not sufficient, since a node that remove_nodes()
+	 * moved to its private list still has a non-empty entry.
+	 */
+	if (node->releasing || list_empty(&node->entry))
+		return false;
+
+	list_del_init(&node->entry);
+	devres_log(dev, node, "REM");
+
+	return true;
 }
 
 /**
@@ -500,6 +518,7 @@ static int remove_nodes(struct device *dev,
 			if (&node->entry == first)
 				first = first->next;
 			list_move_tail(&node->entry, todo);
+			node->releasing = true;
 			cnt++;
 		}
 	}
