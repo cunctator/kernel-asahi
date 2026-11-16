@@ -1,3 +1,7 @@
+* Mon Nov 16 2026 Neal Gompa <neal@gompa.dev> [7.3.4-401.asahi]
+- amend! drm: fb-helper: Add preferred_format to allow more formats (Janne Grunau)
+Resolves: 
+
 * Mon Nov 16 2026 Neal Gompa <neal@gompa.dev> [7.3.4-400.asahi]
 - redhat/configs: aarch64: Enable Apple MSR driver (Neal Gompa)
 - redhat/configs: aarch64: Enable Apple USB4 drivers (Neal Gompa)
